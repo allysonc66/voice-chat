@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Selection</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/styles.css') }}">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            text-align: center;
+        }
+
+        .language-bubble {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 20px;
+            background-color: #007aff;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Welcome</h1>
+        <p>Please select the language you would like to learn:</p>
+        <div class="language-bubble" data-lang="en-US">English</div>
+        <div class="language-bubble" data-lang="es-ES">Spanish</div>
+        <div class="language-bubble" data-lang="fr-FR">French</div>
+        <!-- Add more language bubbles as needed -->
+    </div>
+
+    <script>
+        document.querySelectorAll('.language-bubble').forEach(bubble => {
+            bubble.addEventListener('click', () => {
+                const selectedLanguage = bubble.getAttribute('data-lang');
+                window.location.href = `/chat?lang=${selectedLanguage}`;
+            });
+        });
+    </script>
+</body>
+
+</html>

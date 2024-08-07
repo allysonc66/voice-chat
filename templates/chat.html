@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/styles.css') }}">
+</head>
+
+<body>
+    <div class="chat-container" id="chat-container">
+        <div id="topic-selection" class="topic-bubble-container">
+            <div>Select A Topic</div>
+            <div class="topic-bubble-wrapper">
+                <div class="topic-bubble" data-topic="travel">Travel</div>
+                <div class="topic-bubble" data-topic="food">Food</div>
+                <div class="topic-bubble" data-topic="family">Family</div>
+                <div class="topic-bubble" data-topic="hobbies">Hobbies</div>
+            </div>
+        </div>
+    </div>
+    <div class="chat-input" id="chat-controls" style="display:none;">
+        <button id="start-recording"><i class="fas fa-microphone"></i></button>
+        <button id="stop-recording" style="display:none;"><i class="fas fa-stop"></i></button>
+        <button id="suggest-response-btn">Suggest response</button>
+    </div>
+
+    <script>
+        const chatContainer = document.getElementById('chat-container');
+        const startRecordingButton = document.getElementById('start-recording');
+        const stopRecordingButton = document.getElementById('stop-recording');
+        const topicSelection = document.getElementById('topic-selection');
+        const chatControls = document.getElementById('chat-controls');
+        const selectNewTopicButton = document.getElementById('select-new-topic');
+        const suggestResponseButton = document.getElementById('suggest-response-btn');
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const selectedLanguage = urlParams.get('lang');
+        const languageCode = selectedLanguage.split('-')[0];
+
+        let recognition;
+        let userBubble;
+        let finalText = '';
+        let botHasSpoken = false;
+        let userIsRecording = false;
+
+        function addChatBubble(text, isUser, isSuggested = false) {
+            const container = document.createElement('div');
+            container.classList.add('chat-bubble-container');
+
+            const bubble = document.createElement('div');
+            bubble.classList.add('chat-bubble');
+            bubble.classList.add(isUser ? 'user-bubble' : 'bot-bubble');
+            container.appendChild(bubble); // Append bubble to container
+            chatContainer.appendChild(container); // Append container to chatContainer
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            if (isUser && !isSuggested) {
+                bubble.textContent = text;
+            } else {
+                typeText(bubble, text);
+            }
+
+            const translateButton = document.createElement('span');
+            translateButton.classList.add('translate-button');
+            translateButton.classList.add(isUser ? 'translate-button-right' : 'translate-button-left');
+            translateButton.innerHTML = '<i class="fas fa-eye"></i> Translation';
+            translateButton.addEventListener('click', () => toggleTranslation(bubble, text, translateButton));
+            container.appendChild(translateButton); // Append button to container
+
+            if (isSuggested) {
+                const buttonContainer = document.createElement('div');
+                buttonContainer.classList.add('suggested-response-buttons');
+
+                const continueButton = document.createElement('button');
+                continueButton.textContent = 'Continue';
+                continueButton.addEventListener('click', () => {
+                    continueConversation(text);
+                    buttonContainer.remove();
+                });
+
+                const suggestNewResponseButton = document.createElement('button');
+                suggestNewResponseButton.textContent = 'Suggest new response';
+                suggestNewResponseButton.addEventListener('click', () => suggestNewResponse(bubble, buttonContainer));
+
+                buttonContainer.appendChild(continueButton);
+                buttonContainer.appendChild(suggestNewResponseButton);
+                container.appendChild(buttonContainer);
+            }
+
+            return bubble;
+        }
+
+        function typeText(bubble, text) {
+            const words = text.split(' ');
+            let index = 0;
+
+            function addWord() {
+                if (index < words.length) {
+                    bubble.textContent += (index > 0 ? ' ' : '') + words[index];
+                    index++;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                    setTimeout(addWord, 200); // Adjust typing speed here
+                }
+            }
+
+            addWord();
+        }
+
+        async function toggleTranslation(bubble, text, translateButton) {
+            const translationElement = bubble.querySelector('.translation');
+            if (translationElement) {
+                translationElement.remove();
+                translateButton.innerHTML = '<i class="fas fa-eye"></i> Translation';
+            } else {
+                if (!bubble.dataset.translation) {
+                    const response = await fetch('/translate', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ text: text, from_lang: languageCode, to_lang: "en" })
+                    });
+
+                    const result = await response.json();
+                    const translationText = result.translation ? result.translation : 'Error: ' + result.error;
+                    bubble.dataset.translation = translationText; // Cache the translation
+                }
+
+                const translationDiv = document.createElement('div');
+                translationDiv.classList.add('translation');
+                translationDiv.textContent = bubble.dataset.translation;
+                bubble.appendChild(translationDiv);
+
+                translateButton.innerHTML = '<i class="fas fa-eye-slash"></i> Translation';
+            }
+        }
+
+        // Function to check if the "Suggest response" button should be visible
+        function updateSuggestResponseButton() {
+            if (botHasSpoken && !userIsRecording) {
+                suggestResponseButton.style.display = 'inline';
+            } else {
+                suggestResponseButton.style.display = 'none';
+            }
+        }
+
+        // Call updateSuggestResponseButton whenever botHasSpoken or userIsRecording changes
+        function botSpoke() {
+            botHasSpoken = true;
+            updateSuggestResponseButton();
+        }
+
+        document.querySelectorAll('.topic-bubble').forEach(bubble => {
+            bubble.addEventListener('click', async () => {
+                const selectedTopic = bubble.getAttribute('data-topic');
+                topicSelection.remove();
+                chatControls.style.display = 'flex';
+
+                const response = await fetch('/start_conversation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ topic: selectedTopic, language: selectedLanguage })
+                });
+
+                const result = await response.json();
+                if (result.starter) {
+                    addChatBubble(result.starter, false);
+                } else {
+                    addChatBubble('Error: ' + result.error, false);
+                }
+            });
+        });
+
+        document.getElementById('topic-selection').addEventListener('click', () => {
+            topicSelection.classList.remove('hidden');
+        });
+
+        startRecordingButton.addEventListener('click', () => {
+            startRecordingButton.style.display = 'none';
+            stopRecordingButton.style.display = 'inline';
+            userIsRecording = true;
+            updateSuggestResponseButton();
+
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = selectedLanguage;
+
+            userBubble = addChatBubble('', true);
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalText += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                userBubble.textContent = finalText + interimTranscript;
+            };
+
+            recognition.start();
+        });
+
+        stopRecordingButton.addEventListener('click', () => {
+            startRecordingButton.style.display = 'inline';
+            stopRecordingButton.style.display = 'none';
+            userIsRecording = false;
+            updateSuggestResponseButton();
+
+            recognition.stop();
+            recognition.onend = async () => {
+                // Ensure the final text remains in the bubble
+                userBubble.textContent = finalText;
+
+                const response = await fetch('/chatbot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: finalText, language: selectedLanguage })
+                });
+
+                const result = await response.json();
+                if (result.response) {
+                    addChatBubble(result.response, false);
+                } else {
+                    addChatBubble('Error: ' + result.error, false);
+                }
+
+                // Reset finalText for the next recording session
+                finalText = '';
+            };
+        });
+
+        // Event listener for the "Suggest response" button
+        suggestResponseButton.addEventListener('click', async () => {
+            const response = await fetch('/chatbot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: finalText, language: selectedLanguage })
+            });
+
+            const result = await response.json();
+            if (result.response) {
+                addChatBubble(result.response, true, true); // Add as a user bubble
+            } else {
+                addChatBubble('Error: ' + result.error, true);
+            }
+            botHasSpoken = false;
+            updateSuggestResponseButton();
+        });
+
+        function updateSuggestResponseButton() {
+            if (botHasSpoken && !userIsRecording) {
+                suggestResponseButton.style.display = 'inline';
+            } else {
+                suggestResponseButton.style.display = 'none';
+            }
+        }
+
+        async function continueConversation(text) {
+    const response = await fetch('/chatbot', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text: text, language: selectedLanguage })
+    });
+
+    const result = await response.json();
+    if (result.response) {
+        addChatBubble(result.response, false);
+        botSpoke(); // Call botSpoke() after the bot sends a response
+    } else {
+        addChatBubble('Error: ' + result.error, false);
+    }
+}
+
+async function suggestNewResponse(bubble, buttonContainer) {
+    const response = await fetch('/chatbot', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text: finalText, language: selectedLanguage })
+    });
+
+    const result = await response.json();
+    if (result.response) {
+        bubble.textContent = result.response; // Replace the bubble text with the new suggestion
+    } else {
+        bubble.textContent = 'Error: ' + result.error;
+    }
+}
+
+    </script>
+</body>
+
+</html>
