@@ -36,7 +36,6 @@
         const topicSelection = document.getElementById('topic-selection');
         const chatControls = document.getElementById('chat-controls');
         const micContainer = document.getElementById('mic-button-container');
-        const selectNewTopicButton = document.getElementById('select-new-topic');
         const suggestResponseButton = document.getElementById('suggest-response-btn');
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -55,10 +54,9 @@
             container.classList.add('chat-bubble-container');
 
             const bubble = document.createElement('div');
-            bubble.classList.add('chat-bubble');
-            bubble.classList.add(isUser ? 'user-bubble' : 'bot-bubble');
-            container.appendChild(bubble); // Append bubble to container
-            chatContainer.appendChild(container); // Append container to chatContainer
+            bubble.classList.add('chat-bubble', isUser ? 'user-bubble' : 'bot-bubble');
+            container.appendChild(bubble);
+            chatContainer.appendChild(container);
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
             if (isUser && !isSuggested) {
@@ -68,11 +66,10 @@
             }
 
             const translateButton = document.createElement('span');
-            translateButton.classList.add('translate-button');
-            translateButton.classList.add(isUser ? 'translate-button-right' : 'translate-button-left');
+            translateButton.classList.add('translate-button', isUser ? 'translate-button-right' : 'translate-button-left');
             translateButton.innerHTML = '<i class="fas fa-eye"></i> Translation';
             translateButton.addEventListener('click', () => toggleTranslation(bubble, text, translateButton));
-            container.appendChild(translateButton); // Append button to container
+            container.appendChild(translateButton);
 
             if (isSuggested) {
                 const buttonContainer = document.createElement('div');
@@ -106,7 +103,7 @@
                     bubble.textContent += (index > 0 ? ' ' : '') + words[index];
                     index++;
                     chatContainer.scrollTop = chatContainer.scrollHeight;
-                    setTimeout(addWord, 200); // Adjust typing speed here
+                    setTimeout(addWord, 200);
                 }
             }
 
@@ -130,7 +127,7 @@
 
                     const result = await response.json();
                     const translationText = result.translation ? result.translation : 'Error: ' + result.error;
-                    bubble.dataset.translation = translationText; // Cache the translation
+                    bubble.dataset.translation = translationText;
                 }
 
                 const translationDiv = document.createElement('div');
@@ -142,7 +139,6 @@
             }
         }
 
-        // Function to check if the "Suggest response" button should be visible
         function updateSuggestResponseButton() {
             if (botHasSpoken && !userIsRecording) {
                 suggestResponseButton.style.display = 'inline';
@@ -153,7 +149,6 @@
             }
         }
 
-        // Call updateSuggestResponseButton whenever botHasSpoken or userIsRecording changes
         function botSpoke() {
             botHasSpoken = true;
             updateSuggestResponseButton();
@@ -183,17 +178,11 @@
             });
         });
 
-        document.getElementById('topic-selection').addEventListener('click', () => {
-            topicSelection.classList.remove('hidden');
-        });
-
         startRecordingButton.addEventListener('click', () => {
             startRecordingButton.style.display = 'none';
             stopRecordingButton.style.display = 'inline';
             userIsRecording = true;
             updateSuggestResponseButton();
-            micContainer.style.display = 'inline';
-            stopRecordingButton.style.display = 'inline';
 
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.continuous = true;
@@ -226,7 +215,6 @@
 
             recognition.stop();
             recognition.onend = async () => {
-                // Ensure the final text remains in the bubble
                 userBubble.textContent = finalText;
 
                 const response = await fetch('/chatbot', {
@@ -244,12 +232,10 @@
                     addChatBubble('Error: ' + result.error, false);
                 }
 
-                // Reset finalText for the next recording session
                 finalText = '';
             };
         });
 
-        // Event listener for the "Suggest response" button
         suggestResponseButton.addEventListener('click', async () => {
             const response = await fetch('/chatbot', {
                 method: 'POST',
@@ -261,7 +247,7 @@
 
             const result = await response.json();
             if (result.response) {
-                addChatBubble(result.response, true, true); // Add as a user bubble
+                addChatBubble(result.response, true, true);
                 finalText = result.response;
             } else {
                 addChatBubble('Error: ' + result.error, true);
@@ -282,7 +268,7 @@
             const result = await response.json();
             if (result.response) {
                 addChatBubble(result.response, false);
-                botSpoke(); // Call botSpoke() after the bot sends a response
+                botSpoke();
                 botText = result.response;
             } else {
                 addChatBubble('Error: ' + result.error, false);
@@ -290,7 +276,6 @@
         }
 
         async function suggestNewResponse(bubble, buttonContainer) {
-            
             const response = await fetch('/chatbot', {
                 method: 'POST',
                 headers: {
@@ -301,13 +286,12 @@
 
             const result = await response.json();
             if (result.response) {
-                bubble.textContent = result.response; // Replace the bubble text with the new suggestion
+                bubble.textContent = result.response;
                 finalText = result.response;
             } else {
                 bubble.textContent = 'Error: ' + result.error;
             }
         }
-
     </script>
 </body>
 

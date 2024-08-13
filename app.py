@@ -1,5 +1,5 @@
 from langdetect import detect
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, BlenderbotTokenizer, BlenderbotForConditionalGeneration
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import pyttsx3
@@ -10,8 +10,10 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# Load environment variables
 access_token = os.environ.get("ACCESS_TOKEN")
 
+# Initialize model and tokenizer
 model_name = "meta-llama/Meta-Llama-3.1-8B"
 model = AutoModelForCausalLM.from_pretrained(model_name, token=access_token)
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=access_token)
@@ -21,24 +23,19 @@ model.to(device)
 # Store the conversation context
 conversation_context = {}
 
+# Initialize text-to-speech engine
 tts_engine = pyttsx3.init()
-
 rate = tts_engine.getProperty('rate')
-tts_engine.setProperty('rate', rate-50)
+tts_engine.setProperty('rate', rate - 50)
 
+# Voice settings for different languages
 voice_lang = {
     "en-US": "com.apple.voice.compact.en-US.Samantha",
     "es-ES": "com.apple.eloquence.es-ES.Rocko",
     "fr-FR": "com.apple.voice.compact.fr-CA.Amelie"
 }
 
-language_string = {
-    "en-US": "English",
-    "es-ES": "Spanish",
-    "fr-FR": "French"
-}
-
-# Starter message for each language and each topic
+# Starter messages for each language and topic
 starter_messages = {
     "en-US": {
         "prompt": "system: An informal conversation in Spanish between Alicia and Miguel. Alice responds to your statement or question and then asks a follow-up question. Alicia never answers more than 1 statement.",
@@ -66,76 +63,63 @@ starter_messages = {
     }
 }
 
+# Initialize translator
 translator = Translator()
 
-
 def detect_language(text):
-    language = detect(text)
-    print(f"Detected Language: {language}")
-    return language
+    """Detect the language of the given text."""
+    return detect(text)
 
 def generate_response(text, language, session_id):
-    conversation = conversation_context[session_id]
-    conversation += '''
-    Miguel: {text}. 
-    Alicia: 
-    '''.format(text=text, end_token=tokenizer.eos_token, prompt=starter_messages[language]['prompt'])
-
-    print("CONVERSATION", conversation)
-
+    """Generate a response based on the input text and conversation context."""
+    conversation = conversation_context.get(session_id, "")
+    conversation += f"\nMiguel: {text}.\nAlicia: "
+    
     # Generate the response
-    input_ids = tokenizer.encode(conversation, return_tensors='pt')
-    input_ids = input_ids.to(device)
-
-    print("HERE")
+    input_ids = tokenizer.encode(conversation, return_tensors='pt').to(device)
     outputs = model.generate(input_ids, max_length=100, repetition_penalty=1.2, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(outputs[-1], skip_special_tokens=True)
-    print("OUTPUT", response)
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
     conversation += response.split("Alicia:")[-1]
     conversation_context[session_id] = conversation
 
     return response
 
-
 def text_to_speech(text, language):
+    """Convert text to speech."""
+    if language not in voice_lang:
+        raise ValueError(f"Unsupported language: {language}")
     if tts_engine._inLoop:
         tts_engine.endLoop()
     tts_engine.setProperty('voice', voice_lang[language])
     tts_engine.say(text)
     tts_engine.runAndWait()
 
-
 def get_conversation_starter(topic, language, session_id):
+    """Get a conversation starter based on the topic and language."""
     prompt = starter_messages[language]['prompt']
-    response = '''
-    {prompt}
-
-    Alicia: {topic}.
-    '''.format(prompt=prompt, topic=starter_messages[language][topic], end_token=tokenizer.eos_token)
+    response = f"{prompt}\n\nAlicia: {starter_messages[language][topic]}."
     conversation_context[session_id] = response
 
     return starter_messages[language][topic]
 
-
 def translate_text(text, from_lang="es", to_lang="en"):
-    translated = translator.translate(text, src=from_lang, dest=to_lang).text
-    print("translation", translated)
-    return translated
-
+    """Translate text from one language to another."""
+    return translator.translate(text, src=from_lang, dest=to_lang).text
 
 @app.route('/')
 def index():
+    """Render the index page."""
     return render_template('index.html')
-
 
 @app.route('/chat')
 def chat():
+    """Render the chat page."""
     return render_template('chat.html')
-
 
 @app.route('/start_conversation', methods=['POST'])
 def start_conversation():
+    """Start a new conversation based on the provided topic and language."""
     data = request.get_json()
     topic = data.get('topic')
     language = data.get('language')
@@ -148,9 +132,9 @@ def start_conversation():
 
     return jsonify({'starter': starter}), 200
 
-
 @app.route('/translate', methods=['POST'])
 def translate_endpoint():
+    """Translate text from one language to another."""
     data = request.get_json()
     text = data.get('text')
     from_lang = data.get('from_lang')
@@ -161,27 +145,20 @@ def translate_endpoint():
     translated_text = translate_text(text, from_lang, to_lang)
     return jsonify({'translation': translated_text}), 200
 
-
 @app.route('/chatbot', methods=['POST'])
 def chatbot_endpoint():
+    """Handle chatbot interactions."""
     data = request.get_json()
-    if 'text' not in data:
+    text = data.get('text')
+    if not text:
         return jsonify({'error': 'No text provided'}), 400
-    text = data['text']
-    session_id = request.remote_addr
-    if text == "":
-        return jsonify({'error': 'No text provided'}), 400
-    language = data['language'] if 'language' in data else "en-US"
-    response = generate_response(text, language, session_id)
-    # response = "¿Hola, como puedo ayudarte?"
-    text_to_speech(response, language)
-    return jsonify({"response": response}), 200
 
+    session_id = request.remote_addr
+    language = data.get('language', "en-US")
+    response = generate_response(text, language, session_id)
+    text_to_speech(response, language)
+
+    return jsonify({"response": response}), 200
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-    # TODO: (3) Center the mic icon and make it more obvious - should be red on stop
-    # TODO: (5) Make topic selection look nicer (should be centered)
-    # TODO: (8) Add a "quick translate" side bar that allows you to quickly look up words
-    # TODO: (9) Add pronunciation feedback
-    # TODO: (10) Deploy to AWS
