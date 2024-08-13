@@ -22,8 +22,10 @@
         </div>
     </div>
     <div class="chat-input" id="chat-controls" style="display:none;">
-        <button id="start-recording"><i class="fas fa-microphone"></i></button>
-        <button id="stop-recording" style="display:none;"><i class="fas fa-stop"></i></button>
+        <div class="mic-button-container" id="mic-button-container">
+            <button id="start-recording"><i class="fas fa-microphone"></i></button>
+            <button id="stop-recording" style="display:none;"><i class="fas fa-stop"></i></button>
+        </div>
         <button id="suggest-response-btn">Suggest response</button>
     </div>
 
@@ -33,6 +35,7 @@
         const stopRecordingButton = document.getElementById('stop-recording');
         const topicSelection = document.getElementById('topic-selection');
         const chatControls = document.getElementById('chat-controls');
+        const micContainer = document.getElementById('mic-button-container');
         const selectNewTopicButton = document.getElementById('select-new-topic');
         const suggestResponseButton = document.getElementById('suggest-response-btn');
 
@@ -45,6 +48,7 @@
         let finalText = '';
         let botHasSpoken = false;
         let userIsRecording = false;
+        let botText = '';
 
         function addChatBubble(text, isUser, isSuggested = false) {
             const container = document.createElement('div');
@@ -142,8 +146,10 @@
         function updateSuggestResponseButton() {
             if (botHasSpoken && !userIsRecording) {
                 suggestResponseButton.style.display = 'inline';
+                micContainer.style.display = 'inline';
             } else {
                 suggestResponseButton.style.display = 'none';
+                micContainer.style.display = 'none';
             }
         }
 
@@ -170,6 +176,7 @@
                 const result = await response.json();
                 if (result.starter) {
                     addChatBubble(result.starter, false);
+                    botText = result.starter;
                 } else {
                     addChatBubble('Error: ' + result.error, false);
                 }
@@ -185,6 +192,8 @@
             stopRecordingButton.style.display = 'inline';
             userIsRecording = true;
             updateSuggestResponseButton();
+            micContainer.style.display = 'inline';
+            stopRecordingButton.style.display = 'inline';
 
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.continuous = true;
@@ -211,6 +220,7 @@
         stopRecordingButton.addEventListener('click', () => {
             startRecordingButton.style.display = 'inline';
             stopRecordingButton.style.display = 'none';
+            botHasSpoken = true;
             userIsRecording = false;
             updateSuggestResponseButton();
 
@@ -246,12 +256,13 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ text: finalText, language: selectedLanguage })
+                body: JSON.stringify({ text: botText, language: selectedLanguage })
             });
 
             const result = await response.json();
             if (result.response) {
                 addChatBubble(result.response, true, true); // Add as a user bubble
+                finalText = result.response;
             } else {
                 addChatBubble('Error: ' + result.error, true);
             }
@@ -259,48 +270,43 @@
             updateSuggestResponseButton();
         });
 
-        function updateSuggestResponseButton() {
-            if (botHasSpoken && !userIsRecording) {
-                suggestResponseButton.style.display = 'inline';
+        async function continueConversation(text) {
+            const response = await fetch('/chatbot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: text, language: selectedLanguage })
+            });
+
+            const result = await response.json();
+            if (result.response) {
+                addChatBubble(result.response, false);
+                botSpoke(); // Call botSpoke() after the bot sends a response
+                botText = result.response;
             } else {
-                suggestResponseButton.style.display = 'none';
+                addChatBubble('Error: ' + result.error, false);
             }
         }
 
-        async function continueConversation(text) {
-    const response = await fetch('/chatbot', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text: text, language: selectedLanguage })
-    });
+        async function suggestNewResponse(bubble, buttonContainer) {
+            
+            const response = await fetch('/chatbot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: botText, language: selectedLanguage })
+            });
 
-    const result = await response.json();
-    if (result.response) {
-        addChatBubble(result.response, false);
-        botSpoke(); // Call botSpoke() after the bot sends a response
-    } else {
-        addChatBubble('Error: ' + result.error, false);
-    }
-}
-
-async function suggestNewResponse(bubble, buttonContainer) {
-    const response = await fetch('/chatbot', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text: finalText, language: selectedLanguage })
-    });
-
-    const result = await response.json();
-    if (result.response) {
-        bubble.textContent = result.response; // Replace the bubble text with the new suggestion
-    } else {
-        bubble.textContent = 'Error: ' + result.error;
-    }
-}
+            const result = await response.json();
+            if (result.response) {
+                bubble.textContent = result.response; // Replace the bubble text with the new suggestion
+                finalText = result.response;
+            } else {
+                bubble.textContent = 'Error: ' + result.error;
+            }
+        }
 
     </script>
 </body>
