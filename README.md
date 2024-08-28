@@ -1,5 +1,5 @@
-# voice-chat - This is a voice chat app that uses Meta Llama 3.1-8B model to generate responses.
-# supported languages: en-US, es-ES, fr-FR
+# Voice Chat
+This is a voice chat app that uses Meta Llama 3.1-8B model to generate responses. Supported languages: en-US, es-ES, fr-FR.
 
 ## Setup
 
