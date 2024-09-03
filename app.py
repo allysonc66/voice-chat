@@ -30,7 +30,7 @@ class VoiceChatBot:
         # Starter messages for each language and topic
         self.starter_messages = {
             "en-US": {
-                "context": "The following is a casual conversation between 2 people that speak Ensligh. ",
+                "context": "Hello, I am a person who speaks English. You are my human friend with a family. Do not respond as an AI. Let's have a casual conversation. ",
                 "family": "How many people are in your family?",
                 "food": "What is your favorite food?",
                 "animals": "Do you have any pets?",
@@ -38,7 +38,7 @@ class VoiceChatBot:
                 "hobbies": "What are your hobbies?"
             },
             "es-ES": {
-                "context": "La siguientes es una conversación casual entre 2 personas que hablan Espanol. ",
+                "context": "Hola, soy una persona que habla ingleés. Yo soy tu amigo humano con una familia. No respondo como un AI. Vamos a tener una conversación casual. ",
                 "family": "¿Cuántas personas hay en tu familia?",
                 "food": "¿Cuál es tu comida favorita?",
                 "animals": "¿Tienes algún animal?",
@@ -46,7 +46,7 @@ class VoiceChatBot:
                 "hobbies": "¿Cuáles son tus pasatiempos?"
             },
             "fr-FR": {
-                "context": "La suivante est une conversation de 2 personnes qui parlent francophone. ",
+                "context": "Bonjour, je suis une personne qui parle Français. Vous êtes mon ami humain avec une famille. Je ne reponds pas comme un AI. Nous avons une conversation casée. ",
                 "family": "Combien de personnes sont dans votre famille?",
                 "food": "Quel est votre plat préféré?",
                 "animals": "Avez-vous des animaux?",
@@ -61,6 +61,8 @@ class VoiceChatBot:
 
     def generate_response(self, text, rewind_context=False):
         """Generate a response based on the input text and conversation context."""
+        if len(self.chat.history) == 2:
+            rewind_context = True
         if rewind_context:
             self.chat.rewind()
         response = self.chat.send_message(text)
@@ -80,7 +82,7 @@ class VoiceChatBot:
         """Get a conversation starter based on the topic and language."""
         context = self.starter_messages[language]["context"]
         start_message = self.starter_messages[language][topic]
-        self.chat = self.model.start_chat(history=[{"role": "model", "parts": context + start_message}])
+        self.chat = self.model.start_chat(history=[{"role": "user", "parts": context + start_message}])
 
         return start_message
 
