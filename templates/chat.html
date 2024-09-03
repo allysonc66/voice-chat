@@ -281,12 +281,13 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ text: botText, language: selectedLanguage })
+                body: JSON.stringify({ text: botText, rewindContext: true, language: selectedLanguage })
             });
 
             const result = await response.json();
             if (result.response) {
-                bubble.textContent = result.response;
+                bubble.textContent = ""
+                typeText(bubble, result.response);
                 finalText = result.response;
             } else {
                 bubble.textContent = 'Error: ' + result.error;

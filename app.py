@@ -1,111 +1,100 @@
 from langdetect import detect
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import pyttsx3
 from googletrans import Translator
-import torch
 import os
+import google.generativeai as genai
+
+class VoiceChatBot:
+    def __init__(self, model_name="gemini-1.5-flash"):
+        """Initialize the VoiceChatBot with model and settings."""
+        self.translator = Translator()
+        self.access_token = os.environ.get("GOOGLE_API_KEY")
+        genai.configure(api_key=self.access_token)
+        self.model = genai.GenerativeModel(model_name=model_name)
+        self.chat = self.model.start_chat()
+
+        # Initialize text-to-speech engine
+        self.tts_engine = pyttsx3.init()
+        self.rate = self.tts_engine.getProperty('rate')
+        self.tts_engine.setProperty('rate', self.rate - 50)
+
+        # Voice settings for different languages
+        self.voice_lang = {
+            "en-US": "com.apple.voice.compact.en-US.Samantha",
+            "es-ES": "com.apple.eloquence.es-ES.Rocko",
+            "fr-FR": "com.apple.voice.compact.fr-CA.Amelie"
+        }
+
+        # Starter messages for each language and topic
+        self.starter_messages = {
+            "en-US": {
+                "context": "The following is a casual conversation between 2 people that speak Ensligh. ",
+                "family": "How many people are in your family?",
+                "food": "What is your favorite food?",
+                "animals": "Do you have any pets?",
+                "travel": "Where do you want to travel?",
+                "hobbies": "What are your hobbies?"
+            },
+            "es-ES": {
+                "context": "La siguientes es una conversación casual entre 2 personas que hablan Espanol. ",
+                "family": "¿Cuántas personas hay en tu familia?",
+                "food": "¿Cuál es tu comida favorita?",
+                "animals": "¿Tienes algún animal?",
+                "travel": "¿A dónde quieres viajar?",
+                "hobbies": "¿Cuáles son tus pasatiempos?"
+            },
+            "fr-FR": {
+                "context": "La suivante est une conversation de 2 personnes qui parlent francophone. ",
+                "family": "Combien de personnes sont dans votre famille?",
+                "food": "Quel est votre plat préféré?",
+                "animals": "Avez-vous des animaux?",
+                "travel": "Où voulez-vous voyager?",
+                "hobbies": "Quels sont vos loisirs?"
+            }
+        }
+
+    def detect_language(self, text):
+        """Detect the language of the given text."""
+        return detect(text)
+
+    def generate_response(self, text, rewind_context=False):
+        """Generate a response based on the input text and conversation context."""
+        if rewind_context:
+            self.chat.rewind()
+        response = self.chat.send_message(text)
+        return response.text
+
+    def text_to_speech(self, text, language):
+        """Convert text to speech in the specified language."""
+        if language not in self.voice_lang:
+            raise ValueError(f"Unsupported language: {language}")
+        if self.tts_engine._inLoop:
+            self.tts_engine.endLoop()
+        self.tts_engine.setProperty('voice', self.voice_lang[language])
+        self.tts_engine.say(text)
+        self.tts_engine.runAndWait()
+
+    def get_conversation_starter(self, topic, language):
+        """Get a conversation starter based on the topic and language."""
+        context = self.starter_messages[language]["context"]
+        start_message = self.starter_messages[language][topic]
+        self.chat = self.model.start_chat(history=[{"role": "model", "parts": context + start_message}])
+
+        return start_message
+
+    def translate_text(self, text, from_lang="es", to_lang="en"):
+        """Translate text from one language to another."""
+        return self.translator.translate(text, src=from_lang, dest=to_lang).text
+
+
 
 app = Flask(__name__)
 CORS(app)
 
-# Load environment variables
-access_token = os.environ.get("ACCESS_TOKEN")
-
-# Initialize model and tokenizer
-model_name = "meta-llama/Meta-Llama-3.1-8B"
-model = AutoModelForCausalLM.from_pretrained(model_name, token=access_token)
-tokenizer = AutoTokenizer.from_pretrained(model_name, token=access_token)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model.to(device)
-
-# Store the conversation context
-conversation_context = {}
-
-# Initialize text-to-speech engine
-tts_engine = pyttsx3.init()
-rate = tts_engine.getProperty('rate')
-tts_engine.setProperty('rate', rate - 50)
-
-# Voice settings for different languages
-voice_lang = {
-    "en-US": "com.apple.voice.compact.en-US.Samantha",
-    "es-ES": "com.apple.eloquence.es-ES.Rocko",
-    "fr-FR": "com.apple.voice.compact.fr-CA.Amelie"
-}
-
-# Starter messages for each language and topic
-starter_messages = {
-    "en-US": {
-        "prompt": "system: An informal conversation in Spanish between Alicia and Miguel. Alice responds to your statement or question and then asks a follow-up question. Alicia never answers more than 1 statement.",
-        "family": "How many people are in your family?",
-        "food": "What is your favorite food?",
-        "animals": "Do you have any pets?",
-        "travel": "Where do you want to travel?",
-        "hobbies": "What are your hobbies?"
-    },
-    "es-ES": {
-        "prompt": "sistema: Una conversación informal en español entre Alicia y Miguel. Alicia responde a su afirmación o pregunta y luego hace una pregunta de seguimiento. Alicia nunca responde más de 1 declaracion.",
-        "family": "¿Cuántas personas hay en tu familia?",
-        "food": "¿Cuál es tu comida favorita?",
-        "animals": "¿Tienes algún animal?",
-        "travel": "¿A dónde quieres viajar?",
-        "hobbies": "¿Cuáles son tus pasatiempos?"
-    },
-    "fr-FR": {
-        "prompt": "système : Une conversation informelle en espagnol entre Alicia et Miguel. Alice répond à votre déclaration ou question, puis pose une question complémentaire. Alicia ne répond jamais à plus de 1 affirmation.",
-        "family": "Combien de personnes sont dans votre famille?",
-        "food": "Quel est votre plat préféré?",
-        "animals": "Avez-vous des animaux?",
-        "travel": "Où voulez-vous voyager?",
-        "hobbies": "Quels sont vos loisirs?"
-    }
-}
-
-# Initialize translator
-translator = Translator()
-
-def detect_language(text):
-    """Detect the language of the given text."""
-    return detect(text)
-
-def generate_response(text, language, session_id):
-    """Generate a response based on the input text and conversation context."""
-    conversation = conversation_context.get(session_id, "")
-    conversation += f"\nMiguel: {text}.\nAlicia: "
-    
-    # Generate the response
-    input_ids = tokenizer.encode(conversation, return_tensors='pt').to(device)
-    outputs = model.generate(input_ids, max_length=100, repetition_penalty=1.2, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
-    conversation += response.split("Alicia:")[-1]
-    conversation_context[session_id] = conversation
-
-    return response
-
-def text_to_speech(text, language):
-    """Convert text to speech."""
-    if language not in voice_lang:
-        raise ValueError(f"Unsupported language: {language}")
-    if tts_engine._inLoop:
-        tts_engine.endLoop()
-    tts_engine.setProperty('voice', voice_lang[language])
-    tts_engine.say(text)
-    tts_engine.runAndWait()
-
-def get_conversation_starter(topic, language, session_id):
-    """Get a conversation starter based on the topic and language."""
-    prompt = starter_messages[language]['prompt']
-    response = f"{prompt}\n\nAlicia: {starter_messages[language][topic]}."
-    conversation_context[session_id] = response
-
-    return starter_messages[language][topic]
-
-def translate_text(text, from_lang="es", to_lang="en"):
-    """Translate text from one language to another."""
-    return translator.translate(text, src=from_lang, dest=to_lang).text
+# Create an instance of VoiceChatBot
+chatbot = VoiceChatBot()
 
 @app.route('/')
 def index():
@@ -126,9 +115,8 @@ def start_conversation():
     if not topic or not language:
         return jsonify({'error': 'No topic or language provided'}), 400
 
-    session_id = request.remote_addr
-    starter = get_conversation_starter(topic, language, session_id)
-    text_to_speech(starter, language)
+    starter = chatbot.get_conversation_starter(topic, language)
+    chatbot.text_to_speech(starter, language)
 
     return jsonify({'starter': starter}), 200
 
@@ -142,7 +130,7 @@ def translate_endpoint():
     if not text:
         return jsonify({'error': 'No text provided'}), 400
 
-    translated_text = translate_text(text, from_lang, to_lang)
+    translated_text = chatbot.translate_text(text, from_lang, to_lang)
     return jsonify({'translation': translated_text}), 200
 
 @app.route('/chatbot', methods=['POST'])
@@ -150,15 +138,15 @@ def chatbot_endpoint():
     """Handle chatbot interactions."""
     data = request.get_json()
     text = data.get('text')
+    rewind_context = data.get('rewindContext', False)
     if not text:
         return jsonify({'error': 'No text provided'}), 400
 
-    session_id = request.remote_addr
     language = data.get('language', "en-US")
-    response = generate_response(text, language, session_id)
-    text_to_speech(response, language)
+    response = chatbot.generate_response(text, rewind_context)
+    chatbot.text_to_speech(response, language)
 
     return jsonify({"response": response}), 200
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)
