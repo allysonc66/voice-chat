@@ -79,6 +79,7 @@
                 continueButton.addEventListener('click', () => {
                     continueConversation(text);
                     buttonContainer.remove();
+                    micContainer.style.display = 'inline';
                 });
 
                 const suggestNewResponseButton = document.createElement('button');
@@ -144,7 +145,6 @@
                 micContainer.style.display = 'inline';
             } else {
                 suggestResponseButton.style.display = 'none';
-                micContainer.style.display = 'none';
             }
         }
 
@@ -236,6 +236,7 @@
         });
 
         suggestResponseButton.addEventListener('click', async () => {
+            micContainer.style.display = 'none';
             const response = await fetch('/chatbot', {
                 method: 'POST',
                 headers: {
@@ -253,6 +254,7 @@
             }
             botHasSpoken = false;
             updateSuggestResponseButton();
+            finalText = '';
         });
 
         async function continueConversation(text) {
